@@ -79,6 +79,7 @@ namespace Gsplat
         /// <param name="filePath">Path to PLY file</param>
         public void LoadPlyFile(string filePath)
         {
+            Debug.Log($"[GsplatRuntimeManager] LoadPlyFile start: {filePath}");
             if (IsLoading)
             {
                 StopCoroutine(loadCoroutine);
@@ -152,6 +153,7 @@ namespace Gsplat
             if (gsplatRenderer != null)
             {
                 gsplatRenderer.GsplatAsset = currentAsset;
+                Debug.Log($"[GsplatRuntimeManager] Render ready: {asset.SplatCount} splats");
             }
 
             OnGsplatLoaded?.Invoke(currentAsset);
