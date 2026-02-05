@@ -2,7 +2,7 @@
     "name": "Gsplat.Editor",
     "rootNamespace": "",
     "references": [
-        "GUID:5ef91cffd1997ee4e97e2145f69f5845"
+        "Gsplat"
     ],
     "includePlatforms": [
         "Editor"

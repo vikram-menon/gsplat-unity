@@ -24,7 +24,7 @@ namespace Gsplat
 
         public bool Valid => RenderBeforeUploadComplete ? SplatCount > 0 : SplatCount == GsplatAsset.SplatCount;
         public uint SplatCount => GsplatAsset ? GsplatAsset.SplatCount - m_pendingSplatCount : 0;
-        public ISorterResource SorterResource => m_renderer.SorterResource;
+        public ISorterResource SorterResource => m_renderer?.SorterResource;
 
         uint m_pendingSplatCount;
 
