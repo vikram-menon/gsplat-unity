@@ -30,6 +30,13 @@ Shader "Gsplat/Standard"
             int _SplatCount;
             int _SplatInstanceSize;
             int _SHDegree;
+            int _EnableFoveatedQuality;
+            int _PeripheralSHDegree;
+            float2 _FoveaCenterUV;
+            float _FoveaInnerRadius;
+            float _FoveaOuterRadius;
+            float _PeripheralMinSplatPixels;
+            float _PeripheralKeepProbability;
             float4x4 _MATRIX_M;
             StructuredBuffer<uint> _OrderBuffer;
             StructuredBuffer<float3> _PositionBuffer;
@@ -121,9 +128,36 @@ Shader "Gsplat/Standard"
                     return o;
                 }
 
+                int shDegreeForSplat = _SHDegree;
+                float minSplatPixels = 2.0;
+                if (_EnableFoveatedQuality != 0)
+                {
+                    float2 centerNdc = center.proj.xy / max(abs(center.proj.w), 1e-5);
+                    float2 centerUv = centerNdc * 0.5 + 0.5;
+                    float foveationWeight = CalcFoveationWeight(centerUv, _FoveaCenterUV,
+                        _FoveaInnerRadius, _FoveaOuterRadius);
+
+                    float keepProbability = lerp(1.0, _PeripheralKeepProbability, foveationWeight);
+                    float keepHash = Hash01(source.id * 747796405u + 2891336453u);
+                    if (keepHash > keepProbability)
+                    {
+                        o.vertex = discardVec;
+                        return o;
+                    }
+
+                    float targetDegree = lerp((float)_SHDegree, (float)_PeripheralSHDegree, foveationWeight);
+                    float lowDegree = floor(targetDegree);
+                    float highDegree = ceil(targetDegree);
+                    float chooseHighThreshold = saturate(targetDegree - lowDegree);
+                    float degreeHash = Hash01(source.id * 1597334677u + 3812015801u);
+                    shDegreeForSplat = degreeHash < chooseHighThreshold ? (int)highDegree : (int)lowDegree;
+
+                    minSplatPixels = lerp(2.0, _PeripheralMinSplatPixels, foveationWeight);
+                }
+
                 SplatCovariance cov = ReadCovariance(source);
                 SplatCorner corner;
-                if (!InitCorner(source, cov, center, corner))
+                if (!InitCorner(source, cov, center, minSplatPixels, corner))
                 {
                     o.vertex = discardVec;
                     return o;
@@ -137,7 +171,7 @@ Shader "Gsplat/Standard"
                 float3 sh[SH_COEFFS];
                 for (int i = 0; i < SH_COEFFS; i++)
                     sh[i] = _SHBuffer[source.id * SH_COEFFS + i];
-                color.rgb += EvalSH(sh, dir, _SHDegree);
+                color.rgb += EvalSH(sh, dir, shDegreeForSplat);
                 #endif
 
                 ClipCorner(corner, color.w);

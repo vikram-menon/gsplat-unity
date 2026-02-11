@@ -37,6 +37,13 @@ namespace Gsplat
         static readonly int k_splatCount = Shader.PropertyToID("_SplatCount");
         static readonly int k_gammaToLinear = Shader.PropertyToID("_GammaToLinear");
         static readonly int k_shDegree = Shader.PropertyToID("_SHDegree");
+        static readonly int k_enableFoveatedQuality = Shader.PropertyToID("_EnableFoveatedQuality");
+        static readonly int k_peripheralShDegree = Shader.PropertyToID("_PeripheralSHDegree");
+        static readonly int k_foveaCenterUv = Shader.PropertyToID("_FoveaCenterUV");
+        static readonly int k_foveaInnerRadius = Shader.PropertyToID("_FoveaInnerRadius");
+        static readonly int k_foveaOuterRadius = Shader.PropertyToID("_FoveaOuterRadius");
+        static readonly int k_peripheralMinSplatPixels = Shader.PropertyToID("_PeripheralMinSplatPixels");
+        static readonly int k_peripheralKeepProbability = Shader.PropertyToID("_PeripheralKeepProbability");
 
         public GsplatRendererImpl(uint splatCount, byte shBands)
         {
@@ -116,15 +123,32 @@ namespace Gsplat
         /// <param name="gammaToLinear">Covert color space from Gamma to Linear.</param>
         /// <param name="shDegree">Order of SH coefficients used for rendering. The final value is capped by the SHBands property.</param>
         public void Render(uint splatCount, Transform transform, Bounds localBounds, int layer,
-            bool gammaToLinear = false, int shDegree = 3)
+            bool gammaToLinear = false, int shDegree = 3, bool enableFoveatedQuality = false,
+            Vector2 foveaCenterUv = default, float foveaInnerRadius = 0.25f, float foveaOuterRadius = 0.7f,
+            int peripheralShDegree = 0, float peripheralMinSplatPixels = 4.0f, float peripheralKeepProbability = 0.4f)
         {
             if (!Valid || !GsplatSettings.Instance.Valid || !GsplatSorter.Instance.Valid)
                 return;
+
+            shDegree = Mathf.Clamp(shDegree, 0, SHBands);
+            peripheralShDegree = Mathf.Clamp(peripheralShDegree, 0, shDegree);
+            foveaCenterUv = new Vector2(Mathf.Clamp01(foveaCenterUv.x), Mathf.Clamp01(foveaCenterUv.y));
+            foveaInnerRadius = Mathf.Max(0f, foveaInnerRadius);
+            foveaOuterRadius = Mathf.Max(foveaInnerRadius + 0.0001f, foveaOuterRadius);
+            peripheralMinSplatPixels = Mathf.Max(2f, peripheralMinSplatPixels);
+            peripheralKeepProbability = Mathf.Clamp01(peripheralKeepProbability);
 
             m_propertyBlock.SetInteger(k_splatCount, (int)splatCount);
             m_propertyBlock.SetInteger(k_gammaToLinear, gammaToLinear ? 1 : 0);
             m_propertyBlock.SetInteger(k_splatInstanceSize, (int)GsplatSettings.Instance.SplatInstanceSize);
             m_propertyBlock.SetInteger(k_shDegree, shDegree);
+            m_propertyBlock.SetInteger(k_enableFoveatedQuality, enableFoveatedQuality ? 1 : 0);
+            m_propertyBlock.SetInteger(k_peripheralShDegree, peripheralShDegree);
+            m_propertyBlock.SetVector(k_foveaCenterUv, new Vector4(foveaCenterUv.x, foveaCenterUv.y, 0f, 0f));
+            m_propertyBlock.SetFloat(k_foveaInnerRadius, foveaInnerRadius);
+            m_propertyBlock.SetFloat(k_foveaOuterRadius, foveaOuterRadius);
+            m_propertyBlock.SetFloat(k_peripheralMinSplatPixels, peripheralMinSplatPixels);
+            m_propertyBlock.SetFloat(k_peripheralKeepProbability, peripheralKeepProbability);
             m_propertyBlock.SetMatrix(k_matrixM, transform.localToWorldMatrix);
             var rp = new RenderParams(GsplatSettings.Instance.Materials[SHBands])
             {

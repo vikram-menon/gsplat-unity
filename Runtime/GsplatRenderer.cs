@@ -12,6 +12,16 @@ namespace Gsplat
         public GsplatAsset GsplatAsset;
         [Range(0, 3)] public int SHDegree = 3;
         public bool GammaToLinear;
+        [Header("Foveated Quality")]
+        public bool EnableFoveatedQuality;
+        public Vector2 FoveaCenterUV = new Vector2(0.5f, 0.5f);
+        [Min(0f)] public float FoveaInnerRadius = 0.25f;
+        [Min(0f)] public float FoveaOuterRadius = 0.70f;
+        [Range(0, 3)] public int PeripheralSHDegree = 0;
+        [Min(0f)] public float PeripheralMinSplatPixels = 4.0f;
+        [Range(0f, 1f)] public float PeripheralKeepProbability = 0.40f;
+
+        [Header("Upload")]
         public bool AsyncUpload;
 
         [Tooltip("Max splat count to be uploaded per frame")]
@@ -109,8 +119,17 @@ namespace Gsplat
             }
 
             if (Valid)
-                m_renderer.Render(SplatCount, transform, GsplatAsset.Bounds,
-                    gameObject.layer, GammaToLinear, SHDegree);
+            {
+                var clampedCenter = new Vector2(Mathf.Clamp01(FoveaCenterUV.x), Mathf.Clamp01(FoveaCenterUV.y));
+                var clampedInner = Mathf.Max(0f, FoveaInnerRadius);
+                var clampedOuter = Mathf.Max(clampedInner + 0.0001f, FoveaOuterRadius);
+                var clampedPeripheralShDegree = Mathf.Clamp(PeripheralSHDegree, 0, SHDegree);
+                var clampedPeripheralMinSplatPixels = Mathf.Max(2f, PeripheralMinSplatPixels);
+                var clampedPeripheralKeepProbability = Mathf.Clamp01(PeripheralKeepProbability);
+                m_renderer.Render(SplatCount, transform, GsplatAsset.Bounds, gameObject.layer, GammaToLinear,
+                    SHDegree, EnableFoveatedQuality, clampedCenter, clampedInner, clampedOuter,
+                    clampedPeripheralShDegree, clampedPeripheralMinSplatPixels, clampedPeripheralKeepProbability);
+            }
         }
     }
 }
