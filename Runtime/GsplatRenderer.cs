@@ -10,16 +10,16 @@ namespace Gsplat
     public class GsplatRenderer : MonoBehaviour, IGsplat
     {
         public GsplatAsset GsplatAsset;
-        [Range(0, 3)] public int SHDegree = 3;
+        [Range(0, 3)] public int SHDegree = 2;
         public bool GammaToLinear;
         [Header("Foveated Quality")]
-        public bool EnableFoveatedQuality;
+        public bool EnableFoveatedQuality = true;
         public Vector2 FoveaCenterUV = new Vector2(0.5f, 0.5f);
-        [Min(0f)] public float FoveaInnerRadius = 0.25f;
-        [Min(0f)] public float FoveaOuterRadius = 0.70f;
+        [Min(0f)] public float FoveaInnerRadius = 0.12f;
+        [Min(0f)] public float FoveaOuterRadius = 0.45f;
         [Range(0, 3)] public int PeripheralSHDegree = 0;
-        [Min(0f)] public float PeripheralMinSplatPixels = 4.0f;
-        [Range(0f, 1f)] public float PeripheralKeepProbability = 0.40f;
+        [Min(0f)] public float PeripheralMinSplatPixels = 8.0f;
+        [Range(0f, 1f)] public float PeripheralKeepProbability = 0.15f;
 
         [Header("Upload")]
         public bool AsyncUpload;

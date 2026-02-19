@@ -27,7 +27,7 @@ namespace Gsplat
         
         [Tooltip("SH degree for rendering (0-3)")]
         [Range(0, 3)]
-        public int shDegree = 3;
+        public int shDegree = 2;
         
         [Tooltip("Enable gamma to linear conversion")]
         public bool gammaToLinear = false;
@@ -37,6 +37,33 @@ namespace Gsplat
         
         [Tooltip("Max splat count to upload per frame")]
         public uint uploadBatchSize = 100000;
+
+        [Header("Foveated Quality")]
+        [Tooltip("Enable continuous foveated quality for splat rendering")]
+        public bool enableFoveatedQuality = true;
+
+        [Tooltip("Fovea center in normalized viewport coordinates (0-1)")]
+        public Vector2 foveaCenterUV = new Vector2(0.5f, 0.5f);
+
+        [Min(0f)]
+        [Tooltip("Inner radius around fovea with full quality")]
+        public float foveaInnerRadius = 0.12f;
+
+        [Min(0f)]
+        [Tooltip("Outer radius where peripheral quality settings are fully applied")]
+        public float foveaOuterRadius = 0.45f;
+
+        [Range(0, 3)]
+        [Tooltip("Max SH degree in the periphery")]
+        public int peripheralShDegree = 0;
+
+        [Min(0f)]
+        [Tooltip("Minimum splat size in pixels in the periphery")]
+        public float peripheralMinSplatPixels = 8.0f;
+
+        [Range(0f, 1f)]
+        [Tooltip("Splat keep probability in the periphery")]
+        public float peripheralKeepProbability = 0.15f;
 
         [Header("Events")]
         public GsplatLoadEvent OnGsplatLoaded = new GsplatLoadEvent();
@@ -59,8 +86,9 @@ namespace Gsplat
             if (gsplatRenderer == null && autoCreateRenderer)
             {
                 gsplatRenderer = gameObject.AddComponent<GsplatRenderer>();
-                UpdateRendererSettings();
             }
+
+            UpdateRendererSettings();
         }
 
         void UpdateRendererSettings()
@@ -71,6 +99,13 @@ namespace Gsplat
             gsplatRenderer.GammaToLinear = gammaToLinear;
             gsplatRenderer.AsyncUpload = asyncUpload;
             gsplatRenderer.UploadBatchSize = uploadBatchSize;
+            gsplatRenderer.EnableFoveatedQuality = enableFoveatedQuality;
+            gsplatRenderer.FoveaCenterUV = foveaCenterUV;
+            gsplatRenderer.FoveaInnerRadius = foveaInnerRadius;
+            gsplatRenderer.FoveaOuterRadius = foveaOuterRadius;
+            gsplatRenderer.PeripheralSHDegree = peripheralShDegree;
+            gsplatRenderer.PeripheralMinSplatPixels = peripheralMinSplatPixels;
+            gsplatRenderer.PeripheralKeepProbability = peripheralKeepProbability;
         }
 
         /// <summary>
