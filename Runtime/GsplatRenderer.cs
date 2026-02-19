@@ -47,7 +47,7 @@ namespace Gsplat
                 var fullCount = SplatCount;
                 if (!EnableActiveSetCompaction || m_sortedSplatCount == 0)
                     return fullCount;
-                return Mathf.Min(fullCount, m_sortedSplatCount);
+                return Math.Min(fullCount, m_sortedSplatCount);
             }
         }
         public ISorterResource SorterResource => m_renderer?.SorterResource;
