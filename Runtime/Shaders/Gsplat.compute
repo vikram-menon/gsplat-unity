@@ -16,6 +16,10 @@
 
 #pragma kernel InitPayload
 #pragma kernel CalcDistance
+#pragma kernel ClearActiveCounter
+#pragma kernel BuildActiveList
+#pragma kernel BuildSortDispatchArgs
+#pragma kernel CopyActiveIndicesToOrder
 #pragma kernel InitDeviceRadixSort
 #pragma kernel Upsweep
 #pragma kernel Scan
@@ -30,6 +34,98 @@
 
 StructuredBuffer<float3> _PositionBuffer;
 float4x4 _MatrixMV;
+float4x4 _MatrixMVP;
+float2 _ActiveSetCenterUV;
+float _ActiveSetInnerRadius;
+float _ActiveSetOuterRadius;
+float _ActiveSetPeripheralKeepProbability;
+float _ActiveSetMinKeep;
+RWStructuredBuffer<uint> _ActiveIndexBuffer;
+RWStructuredBuffer<uint> _ActiveCountBuffer;
+RWStructuredBuffer<uint> _IndirectDispatchArgsBuffer;
+RWStructuredBuffer<uint> _OrderBuffer;
+
+uint HashUint(uint x)
+{
+    x ^= x >> 16;
+    x *= 0x7feb352du;
+    x ^= x >> 15;
+    x *= 0x846ca68bu;
+    x ^= x >> 16;
+    return x;
+}
+
+float Hash01(uint x)
+{
+    return (HashUint(x) & 0x00ffffffu) / 16777216.0;
+}
+
+[numthreads(1,1,1)]
+void ClearActiveCounter(uint3 id : SV_DispatchThreadID)
+{
+    _ActiveCountBuffer[0] = 0;
+}
+
+[numthreads(GROUP_SIZE,1,1)]
+void BuildActiveList(uint3 id : SV_DispatchThreadID)
+{
+    uint idx = id.x;
+    if (idx >= e_numKeys)
+        return;
+
+    float3 pos = _PositionBuffer[idx];
+    float4 clip = mul(_MatrixMVP, float4(pos.xyz, 1.0));
+    if (clip.w <= 0.0)
+        return;
+
+    float2 ndc = clip.xy / max(abs(clip.w), 1e-5);
+    float2 uv = ndc * 0.5 + 0.5;
+    float safeOuter = max(_ActiveSetInnerRadius + 1e-5, _ActiveSetOuterRadius);
+    float w = smoothstep(_ActiveSetInnerRadius, safeOuter, distance(uv, _ActiveSetCenterUV));
+
+    float peripheralKeep = lerp(1.0, _ActiveSetPeripheralKeepProbability, w);
+    float keepProbability = max(_ActiveSetMinKeep, peripheralKeep);
+    float keepHash = Hash01(idx * 747796405u + 2891336453u);
+    if (keepHash > keepProbability)
+        return;
+
+    uint writeIndex;
+    InterlockedAdd(_ActiveCountBuffer[0], 1, writeIndex);
+    if (writeIndex < e_numKeys)
+        _ActiveIndexBuffer[writeIndex] = idx;
+}
+
+[numthreads(1,1,1)]
+void BuildSortDispatchArgs(uint3 id : SV_DispatchThreadID)
+{
+    uint activeCount = clamp(_ActiveCountBuffer[0], 1u, e_numKeys);
+    uint calcGroups = (activeCount + GROUP_SIZE - 1) / GROUP_SIZE;
+    uint threadBlocks = (activeCount + PART_SIZE - 1) / PART_SIZE;
+
+    // CalcDistance
+    _IndirectDispatchArgsBuffer[0] = calcGroups;
+    _IndirectDispatchArgsBuffer[1] = 1;
+    _IndirectDispatchArgsBuffer[2] = 1;
+
+    // Upsweep
+    _IndirectDispatchArgsBuffer[3] = threadBlocks;
+    _IndirectDispatchArgsBuffer[4] = 1;
+    _IndirectDispatchArgsBuffer[5] = 1;
+
+    // Downsweep
+    _IndirectDispatchArgsBuffer[6] = threadBlocks;
+    _IndirectDispatchArgsBuffer[7] = 1;
+    _IndirectDispatchArgsBuffer[8] = 1;
+}
+
+[numthreads(GROUP_SIZE,1,1)]
+void CopyActiveIndicesToOrder(uint3 id : SV_DispatchThreadID)
+{
+    uint idx = id.x;
+    if (idx >= e_numKeys)
+        return;
+    _OrderBuffer[idx] = _ActiveIndexBuffer[idx];
+}
 
 [numthreads(GROUP_SIZE,1,1)]
 void InitPayload(uint3 id : SV_DispatchThreadID)

@@ -53,6 +53,17 @@ namespace Gsplat
         public Shader Shader;
         public ComputeShader ComputeShader;
         public uint SplatInstanceSize = 128;
+        [Header("Sort Throttling")]
+        public bool EnableSortThrottle = true;
+        [Min(1)] public int SortEveryNFrames = 2;
+        [Min(1)] public int MaxSortStaleFrames = 3;
+        [Min(0f)] public float ResortPosThresholdMeters = 0.01f;
+        [Min(0f)] public float ResortRotThresholdDegrees = 0.5f;
+
+        [Header("Active Set Compaction")]
+        public bool EnableActiveSetCompaction;
+        [Range(0f, 1f)] public float ActiveSetMinKeep = 0.65f;
+
         public bool ShowImportErrors = true;
         public Material[] Materials { get; private set; }
         public Mesh Mesh { get; private set; }
@@ -112,6 +123,12 @@ namespace Gsplat
 
         void OnValidate()
         {
+            SortEveryNFrames = Math.Max(1, SortEveryNFrames);
+            MaxSortStaleFrames = Math.Max(1, MaxSortStaleFrames);
+            ResortPosThresholdMeters = Math.Max(0f, ResortPosThresholdMeters);
+            ResortRotThresholdDegrees = Math.Max(0f, ResortRotThresholdDegrees);
+            ActiveSetMinKeep = Mathf.Clamp01(ActiveSetMinKeep);
+
             if (Shader != m_prevShader)
             {
                 CreateMaterials();

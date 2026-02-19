@@ -21,6 +21,12 @@ namespace Gsplat
         [Min(0f)] public float PeripheralMinSplatPixels = 8.0f;
         [Range(0f, 1f)] public float PeripheralKeepProbability = 0.15f;
 
+        [Header("Active Set Compaction")]
+        public bool EnableActiveSetCompaction = true;
+        [Min(0f)] public float ActiveSetInnerRadius = 0.18f;
+        [Min(0f)] public float ActiveSetOuterRadius = 0.55f;
+        [Range(0f, 1f)] public float ActiveSetPeripheralKeepProbability = 0.65f;
+
         [Header("Upload")]
         public bool AsyncUpload;
 
@@ -34,9 +40,25 @@ namespace Gsplat
 
         public bool Valid => RenderBeforeUploadComplete ? SplatCount > 0 : SplatCount == GsplatAsset.SplatCount;
         public uint SplatCount => GsplatAsset ? GsplatAsset.SplatCount - m_pendingSplatCount : 0;
+        uint DrawSplatCount
+        {
+            get
+            {
+                var fullCount = SplatCount;
+                if (!EnableActiveSetCompaction || m_sortedSplatCount == 0)
+                    return fullCount;
+                return Mathf.Min(fullCount, m_sortedSplatCount);
+            }
+        }
         public ISorterResource SorterResource => m_renderer?.SorterResource;
+        bool IGsplat.EnableActiveSetCompaction => EnableActiveSetCompaction;
+        Vector2 IGsplat.ActiveSetCenterUV => FoveaCenterUV;
+        float IGsplat.ActiveSetInnerRadius => ActiveSetInnerRadius;
+        float IGsplat.ActiveSetOuterRadius => ActiveSetOuterRadius;
+        float IGsplat.ActiveSetPeripheralKeepProbability => ActiveSetPeripheralKeepProbability;
 
         uint m_pendingSplatCount;
+        uint m_sortedSplatCount;
 
         void SetBufferData()
         {
@@ -84,6 +106,7 @@ namespace Gsplat
                 SetBufferDataAsync();
             else
                 SetBufferData();
+            m_sortedSplatCount = SplatCount;
         }
 
         void OnDisable()
@@ -91,6 +114,7 @@ namespace Gsplat
             GsplatSorter.Instance.UnregisterGsplat(this);
             m_renderer?.Dispose();
             m_renderer = null;
+            m_sortedSplatCount = 0;
         }
 
         void Update()
@@ -115,6 +139,7 @@ namespace Gsplat
                         SetBufferDataAsync();
                     else
                         SetBufferData();
+                    m_sortedSplatCount = SplatCount;
                 }
             }
 
@@ -126,10 +151,15 @@ namespace Gsplat
                 var clampedPeripheralShDegree = Mathf.Clamp(PeripheralSHDegree, 0, SHDegree);
                 var clampedPeripheralMinSplatPixels = Mathf.Max(2f, PeripheralMinSplatPixels);
                 var clampedPeripheralKeepProbability = Mathf.Clamp01(PeripheralKeepProbability);
-                m_renderer.Render(SplatCount, transform, GsplatAsset.Bounds, gameObject.layer, GammaToLinear,
+                m_renderer.Render(DrawSplatCount, transform, GsplatAsset.Bounds, gameObject.layer, GammaToLinear,
                     SHDegree, EnableFoveatedQuality, clampedCenter, clampedInner, clampedOuter,
                     clampedPeripheralShDegree, clampedPeripheralMinSplatPixels, clampedPeripheralKeepProbability);
             }
+        }
+
+        void IGsplat.SetSortedSplatCount(uint count)
+        {
+            m_sortedSplatCount = count;
         }
     }
 }

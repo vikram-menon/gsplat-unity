@@ -157,8 +157,15 @@ namespace Gsplat
                 layer = layer
             };
 
+#if UNITY_EDITOR || DEVELOPMENT_BUILD
+            var drawStartTime = Time.realtimeSinceStartupAsDouble;
+#endif
             Graphics.RenderMeshPrimitives(rp, GsplatSettings.Instance.Mesh, 0,
                 Mathf.CeilToInt(splatCount / (float)GsplatSettings.Instance.SplatInstanceSize));
+#if UNITY_EDITOR || DEVELOPMENT_BUILD
+            var drawEndTime = Time.realtimeSinceStartupAsDouble;
+            GsplatPerfStats.RecordDrawSubmissionMs((drawEndTime - drawStartTime) * 1000.0);
+#endif
         }
     }
 }

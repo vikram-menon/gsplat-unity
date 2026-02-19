@@ -65,6 +65,22 @@ namespace Gsplat
         [Tooltip("Splat keep probability in the periphery")]
         public float peripheralKeepProbability = 0.15f;
 
+        [Header("Active Set Compaction")]
+        [Tooltip("Enable runtime active set compaction for sorting")]
+        public bool enableActiveSetCompaction = true;
+
+        [Min(0f)]
+        [Tooltip("Inner radius around center where splats are always kept")]
+        public float activeSetInnerRadius = 0.18f;
+
+        [Min(0f)]
+        [Tooltip("Outer radius where peripheral keep probability is fully applied")]
+        public float activeSetOuterRadius = 0.55f;
+
+        [Range(0f, 1f)]
+        [Tooltip("Keep probability in the periphery for active set compaction")]
+        public float activeSetPeripheralKeepProbability = 0.65f;
+
         [Header("Events")]
         public GsplatLoadEvent OnGsplatLoaded = new GsplatLoadEvent();
         public GsplatProgressEvent OnLoadProgress = new GsplatProgressEvent();
@@ -106,6 +122,10 @@ namespace Gsplat
             gsplatRenderer.PeripheralSHDegree = peripheralShDegree;
             gsplatRenderer.PeripheralMinSplatPixels = peripheralMinSplatPixels;
             gsplatRenderer.PeripheralKeepProbability = peripheralKeepProbability;
+            gsplatRenderer.EnableActiveSetCompaction = enableActiveSetCompaction;
+            gsplatRenderer.ActiveSetInnerRadius = activeSetInnerRadius;
+            gsplatRenderer.ActiveSetOuterRadius = activeSetOuterRadius;
+            gsplatRenderer.ActiveSetPeripheralKeepProbability = activeSetPeripheralKeepProbability;
         }
 
         /// <summary>

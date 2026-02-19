@@ -15,6 +15,17 @@ namespace Gsplat
     {
         static readonly int k_positionBuffer = Shader.PropertyToID("_PositionBuffer");
         static readonly int k_matrixMv = Shader.PropertyToID("_MatrixMV");
+        static readonly int k_matrixMvp = Shader.PropertyToID("_MatrixMVP");
+        static readonly int k_activeSetCenterUv = Shader.PropertyToID("_ActiveSetCenterUV");
+        static readonly int k_activeSetInnerRadius = Shader.PropertyToID("_ActiveSetInnerRadius");
+        static readonly int k_activeSetOuterRadius = Shader.PropertyToID("_ActiveSetOuterRadius");
+        static readonly int k_activeSetPeripheralKeepProbability =
+            Shader.PropertyToID("_ActiveSetPeripheralKeepProbability");
+        static readonly int k_activeSetMinKeep = Shader.PropertyToID("_ActiveSetMinKeep");
+        static readonly int k_activeIndexBuffer = Shader.PropertyToID("_ActiveIndexBuffer");
+        static readonly int k_activeCountBuffer = Shader.PropertyToID("_ActiveCountBuffer");
+        static readonly int k_indirectDispatchArgsBuffer = Shader.PropertyToID("_IndirectDispatchArgsBuffer");
+        static readonly int k_orderBuffer = Shader.PropertyToID("_OrderBuffer");
         static readonly int k_eNumKeys = Shader.PropertyToID("e_numKeys");
         static readonly int k_eThreadBlocks = Shader.PropertyToID("e_threadBlocks");
         static readonly int k_bPassHist = Shader.PropertyToID("b_passHist");
@@ -40,10 +51,22 @@ namespace Gsplat
         public struct Args
         {
             public uint Count;
+            public uint SortCount;
             public Matrix4x4 MatrixMv;
+            public Matrix4x4 MatrixMvp;
+            public bool BuildActiveSet;
+            public bool EnableActiveSetCompaction;
+            public Vector2 ActiveSetCenterUV;
+            public float ActiveSetInnerRadius;
+            public float ActiveSetOuterRadius;
+            public float ActiveSetPeripheralKeepProbability;
+            public float ActiveSetMinKeep;
             public GraphicsBuffer PositionBuffer;
             public GraphicsBuffer InputKeys;
             public GraphicsBuffer InputValues;
+            public GraphicsBuffer ActiveIndexBuffer;
+            public GraphicsBuffer ActiveCountBuffer;
+            public GraphicsBuffer IndirectDispatchArgsBuffer;
             public SupportResources Resources;
         }
 
@@ -90,6 +113,10 @@ namespace Gsplat
         readonly ComputeShader m_CS;
         readonly int m_kernelInitPayload = -1;
         readonly int m_kernelCalcDistance = -1;
+        readonly int m_kernelClearActiveCounter = -1;
+        readonly int m_kernelBuildActiveList = -1;
+        readonly int m_kernelBuildSortDispatchArgs = -1;
+        readonly int m_kernelCopyActiveIndicesToOrder = -1;
         readonly int m_kernelInitDeviceRadixSort = -1;
         readonly int m_kernelUpsweep = -1;
         readonly int m_kernelScan = -1;
@@ -106,6 +133,10 @@ namespace Gsplat
             {
                 m_kernelInitPayload = cs.FindKernel("InitPayload");
                 m_kernelCalcDistance = cs.FindKernel("CalcDistance");
+                m_kernelClearActiveCounter = cs.FindKernel("ClearActiveCounter");
+                m_kernelBuildActiveList = cs.FindKernel("BuildActiveList");
+                m_kernelBuildSortDispatchArgs = cs.FindKernel("BuildSortDispatchArgs");
+                m_kernelCopyActiveIndicesToOrder = cs.FindKernel("CopyActiveIndicesToOrder");
                 m_kernelInitDeviceRadixSort = cs.FindKernel("InitDeviceRadixSort");
                 m_kernelUpsweep = cs.FindKernel("Upsweep");
                 m_kernelScan = cs.FindKernel("Scan");
@@ -114,6 +145,10 @@ namespace Gsplat
 
             m_Valid = m_kernelInitPayload >= 0 &&
                       m_kernelCalcDistance >= 0 &&
+                      m_kernelClearActiveCounter >= 0 &&
+                      m_kernelBuildActiveList >= 0 &&
+                      m_kernelBuildSortDispatchArgs >= 0 &&
+                      m_kernelCopyActiveIndicesToOrder >= 0 &&
                       m_kernelInitDeviceRadixSort >= 0 &&
                       m_kernelUpsweep >= 0 &&
                       m_kernelScan >= 0 &&
@@ -122,6 +157,10 @@ namespace Gsplat
             {
                 if (!cs.IsSupported(m_kernelInitPayload) ||
                     !cs.IsSupported(m_kernelCalcDistance) ||
+                    !cs.IsSupported(m_kernelClearActiveCounter) ||
+                    !cs.IsSupported(m_kernelBuildActiveList) ||
+                    !cs.IsSupported(m_kernelBuildSortDispatchArgs) ||
+                    !cs.IsSupported(m_kernelCopyActiveIndicesToOrder) ||
                     !cs.IsSupported(m_kernelInitDeviceRadixSort) ||
                     !cs.IsSupported(m_kernelUpsweep) ||
                     !cs.IsSupported(m_kernelScan) ||
@@ -154,7 +193,7 @@ namespace Gsplat
             cmd.DispatchCompute(m_CS, m_kernelInitPayload, (int)DivRoundUp(count, 1024), 1, 1);
         }
 
-        public void Dispatch(CommandBuffer cmd, Args args)
+        public uint Dispatch(CommandBuffer cmd, Args args)
         {
             Assert.IsTrue(Valid);
 
@@ -164,8 +203,42 @@ namespace Gsplat
             GraphicsBuffer dstKeyBuffer = args.Resources.AltBuffer;
             GraphicsBuffer dstPayloadBuffer = args.Resources.AltPayloadBuffer;
 
-            uint numKeys = args.Count;
-            uint threadBlocks = DivRoundUp(args.Count, k_deviceRadixSortPartitionSize);
+            var maxCount = Mathf.Max(1, (int)args.Count);
+            var numKeys = (uint)Mathf.Clamp((int)args.SortCount, 1, maxCount);
+
+            if (args.BuildActiveSet)
+            {
+                // Build camera-aware active list; resulting count is consumed via GPU readback in the sorter.
+                cmd.SetComputeIntParam(m_CS, k_eNumKeys, (int)args.Count);
+                cmd.SetComputeMatrixParam(m_CS, k_matrixMvp, args.MatrixMvp);
+                cmd.SetComputeVectorParam(m_CS, k_activeSetCenterUv, args.ActiveSetCenterUV);
+                cmd.SetComputeFloatParam(m_CS, k_activeSetInnerRadius, args.ActiveSetInnerRadius);
+                cmd.SetComputeFloatParam(m_CS, k_activeSetOuterRadius, args.ActiveSetOuterRadius);
+                cmd.SetComputeFloatParam(m_CS, k_activeSetPeripheralKeepProbability,
+                    args.ActiveSetPeripheralKeepProbability);
+                cmd.SetComputeFloatParam(m_CS, k_activeSetMinKeep, args.ActiveSetMinKeep);
+                cmd.SetComputeBufferParam(m_CS, m_kernelClearActiveCounter, k_activeCountBuffer,
+                    args.ActiveCountBuffer);
+                cmd.DispatchCompute(m_CS, m_kernelClearActiveCounter, 1, 1, 1);
+
+                cmd.SetComputeBufferParam(m_CS, m_kernelBuildActiveList, k_positionBuffer, positionBuffer);
+                cmd.SetComputeBufferParam(m_CS, m_kernelBuildActiveList, k_activeIndexBuffer, args.ActiveIndexBuffer);
+                cmd.SetComputeBufferParam(m_CS, m_kernelBuildActiveList, k_activeCountBuffer, args.ActiveCountBuffer);
+                cmd.DispatchCompute(m_CS, m_kernelBuildActiveList, (int)DivRoundUp(args.Count, 1024), 1, 1);
+
+                cmd.SetComputeBufferParam(m_CS, m_kernelBuildSortDispatchArgs, k_activeCountBuffer,
+                    args.ActiveCountBuffer);
+                cmd.SetComputeBufferParam(m_CS, m_kernelBuildSortDispatchArgs, k_indirectDispatchArgsBuffer,
+                    args.IndirectDispatchArgsBuffer);
+                cmd.DispatchCompute(m_CS, m_kernelBuildSortDispatchArgs, 1, 1, 1);
+            }
+
+            if (args.EnableActiveSetCompaction)
+            {
+                srcPayloadBuffer = args.ActiveIndexBuffer;
+            }
+
+            uint threadBlocks = DivRoundUp(numKeys, k_deviceRadixSortPartitionSize);
 
             // Setup overall constants
             cmd.SetComputeIntParam(m_CS, k_eNumKeys, (int)numKeys);
@@ -176,7 +249,7 @@ namespace Gsplat
             cmd.SetComputeBufferParam(m_CS, m_kernelCalcDistance, k_positionBuffer, positionBuffer);
             cmd.SetComputeBufferParam(m_CS, m_kernelCalcDistance, k_bSort, srcKeyBuffer);
             cmd.SetComputeBufferParam(m_CS, m_kernelCalcDistance, k_bSortPayload, srcPayloadBuffer);
-            cmd.DispatchCompute(m_CS, m_kernelCalcDistance, (int)DivRoundUp(args.Count, 1024), 1, 1);
+            cmd.DispatchCompute(m_CS, m_kernelCalcDistance, (int)DivRoundUp(numKeys, 1024), 1, 1);
 
             //Set statically located buffers
             //Upsweep
@@ -218,6 +291,17 @@ namespace Gsplat
                 (srcKeyBuffer, dstKeyBuffer) = (dstKeyBuffer, srcKeyBuffer);
                 (srcPayloadBuffer, dstPayloadBuffer) = (dstPayloadBuffer, srcPayloadBuffer);
             }
+
+            if (args.EnableActiveSetCompaction)
+            {
+                cmd.SetComputeIntParam(m_CS, k_eNumKeys, (int)numKeys);
+                cmd.SetComputeBufferParam(m_CS, m_kernelCopyActiveIndicesToOrder, k_activeIndexBuffer,
+                    args.ActiveIndexBuffer);
+                cmd.SetComputeBufferParam(m_CS, m_kernelCopyActiveIndicesToOrder, k_orderBuffer, args.InputValues);
+                cmd.DispatchCompute(m_CS, m_kernelCopyActiveIndicesToOrder, (int)DivRoundUp(numKeys, 1024), 1, 1);
+            }
+
+            return numKeys;
         }
     }
 }
